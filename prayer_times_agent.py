@@ -2,7 +2,6 @@ import os
 import time
 import schedule
 import requests
-import geocoder
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from twilio.rest import Client
@@ -12,7 +11,7 @@ from dateutil import parser
 load_dotenv()
 
 # App version
-APP_VERSION = "1.2.0"  # Enhanced notifications with beautiful formatting
+APP_VERSION = "1.2.1"  # Added fixed location support
 
 class PrayerTimesAgent:
     def __init__(self):
@@ -33,14 +32,23 @@ class PrayerTimesAgent:
             'Isha': '🌙'      # Crescent moon for Isha
         }
         
-        # Get current location
-        self.update_location()
+        # Set location from environment variables
+        self.set_location()
+        
+    def set_location(self):
+        """Set location from environment variables"""
+        self.latitude = float(os.getenv('LATITUDE', '31.442522'))  # Default to DHA Lahore
+        self.longitude = float(os.getenv('LONGITUDE', '74.4310845'))
+        self.city = os.getenv('CITY', 'DHA Lahore')
+        self.country = os.getenv('COUNTRY', 'Pakistan')
+        print(f"Location set to: {self.city}, {self.country} ({self.latitude}, {self.longitude})")
         
     def send_startup_notification(self):
         """Send startup notification with app info"""
         startup_message = (
             f"🚀 Prayer Times Agent v{APP_VERSION} is now running!\n\n"
             f"📍 Location: {self.city}, {self.country}\n"
+            f"📌 Coordinates: {self.latitude}, {self.longitude}\n"
             f"⚙️ Features:\n"
             f"• 🕌 All prayer time notifications\n"
             f"• ⏰ 10-min advance alert for Asr\n"
@@ -49,18 +57,6 @@ class PrayerTimesAgent:
             f"📱 Notifications are now active"
         )
         self.send_whatsapp_message(startup_message)
-        
-    def update_location(self):
-        """Get current location using IP address"""
-        g = geocoder.ip('me')
-        if g.ok:
-            self.latitude = g.lat
-            self.longitude = g.lng
-            self.city = g.city
-            self.country = g.country
-            print(f"Location updated: {self.city}, {self.country}")
-        else:
-            raise Exception("Could not get location")
 
     def get_prayer_times(self):
         """Fetch prayer times from API"""
@@ -155,9 +151,8 @@ class PrayerTimesAgent:
         # Send startup notification
         self.send_startup_notification()
         
-        # Schedule daily location update and prayer scheduling
-        schedule.every().day.at("00:01").do(self.update_location)
-        schedule.every().day.at("00:02").do(self.schedule_prayers)
+        # Schedule daily prayer scheduling
+        schedule.every().day.at("00:01").do(self.schedule_prayers)
         
         # Initial run
         self.schedule_prayers()
