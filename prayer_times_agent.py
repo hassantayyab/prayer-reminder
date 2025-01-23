@@ -12,7 +12,7 @@ from dateutil import parser
 load_dotenv()
 
 # App version
-APP_VERSION = "1.1.0"  # Added startup notification and 10-min alerts for Asr & Isha
+APP_VERSION = "1.2.0"  # Enhanced notifications with beautiful formatting
 
 class PrayerTimesAgent:
     def __init__(self):
@@ -24,6 +24,15 @@ class PrayerTimesAgent:
         self.twilio_phone_number = os.getenv('TWILIO_PHONE_NUMBER')
         self.your_whatsapp_number = os.getenv('YOUR_WHATSAPP_NUMBER')
         
+        # Prayer emojis mapping
+        self.prayer_emojis = {
+            'Fajr': '🌅',     # Sunrise for Fajr
+            'Dhuhr': '☀️',    # Sun for Dhuhr
+            'Asr': '🌤️',     # Sun behind cloud for Asr
+            'Maghrib': '🌅',  # Sunset for Maghrib
+            'Isha': '🌙'      # Crescent moon for Isha
+        }
+        
         # Get current location
         self.update_location()
         
@@ -33,10 +42,11 @@ class PrayerTimesAgent:
             f"🚀 Prayer Times Agent v{APP_VERSION} is now running!\n\n"
             f"📍 Location: {self.city}, {self.country}\n"
             f"⚙️ Features:\n"
-            f"• All prayer time notifications\n"
-            f"• 10-min advance alert for Asr\n"
-            f"• 10-min advance alert for Isha\n\n"
-            f"🕌 May Allah accept our prayers"
+            f"• 🕌 All prayer time notifications\n"
+            f"• ⏰ 10-min advance alert for Asr\n"
+            f"• ⏰ 10-min advance alert for Isha\n\n"
+            f"🤲 May Allah accept our prayers\n"
+            f"📱 Notifications are now active"
         )
         self.send_whatsapp_message(startup_message)
         
@@ -78,6 +88,28 @@ class PrayerTimesAgent:
         prayer_time = parser.parse(f"{datetime.now().strftime('%Y-%m-%d')} {time_str}")
         return (prayer_time - timedelta(minutes=minutes)).strftime("%H:%M")
 
+    def format_prayer_message(self, prayer_name, time_str, is_advance=False):
+        """Format prayer notification message with beautiful styling"""
+        emoji = self.prayer_emojis.get(prayer_name, '🕌')
+        current_date = datetime.now().strftime("%d %B %Y")
+        
+        if is_advance:
+            return (
+                f"⏰ Prayer Reminder ⏰\n\n"
+                f"Get ready for {prayer_name} prayer!\n"
+                f"{emoji} Time: {time_str}\n"
+                f"📅 {current_date}\n\n"
+                f"🤲 10 minutes remaining to prepare"
+            )
+        else:
+            return (
+                f"🕌 Prayer Time 🕌\n\n"
+                f"{emoji} {prayer_name} Prayer\n"
+                f"⏰ Time: {time_str}\n"
+                f"📅 {current_date}\n\n"
+                f"🤲 May Allah accept our prayers"
+            )
+
     def schedule_prayers(self):
         """Schedule prayer time notifications"""
         prayer_times = self.get_prayer_times()
@@ -100,7 +132,7 @@ class PrayerTimesAgent:
             if prayer_time > datetime.now():
                 schedule.every().day.at(prayer_times[prayer]).do(
                     self.send_whatsapp_message,
-                    f"🕌 Time for {name} prayer!"
+                    self.format_prayer_message(name, prayer_times[prayer])
                 )
                 print(f"Scheduled {name} prayer notification for {prayer_times[prayer]}")
                 
@@ -112,7 +144,7 @@ class PrayerTimesAgent:
                     if advance_time_obj > datetime.now():
                         schedule.every().day.at(advance_time).do(
                             self.send_whatsapp_message,
-                            f"⏰ 10 minutes remaining for {name} prayer!"
+                            self.format_prayer_message(name, prayer_times[prayer], is_advance=True)
                         )
                         print(f"Scheduled 10-minute advance notification for {name} prayer at {advance_time}")
 
