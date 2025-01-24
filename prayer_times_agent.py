@@ -2,6 +2,7 @@ import os
 import time
 import schedule
 import requests
+import pytz
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from twilio.rest import Client
@@ -11,7 +12,10 @@ from dateutil import parser
 load_dotenv()
 
 # App version
-APP_VERSION = "1.2.1"  # Added fixed location support
+APP_VERSION = "1.2.2"  # Added timezone support for Pakistan
+
+# Set timezone for Pakistan
+TIMEZONE = pytz.timezone('Asia/Karachi')
 
 class PrayerTimesAgent:
     def __init__(self):
@@ -43,12 +47,18 @@ class PrayerTimesAgent:
         self.country = os.getenv('COUNTRY', 'Pakistan')
         print(f"Location set to: {self.city}, {self.country} ({self.latitude}, {self.longitude})")
         
+    def get_pk_time(self):
+        """Get current time in Pakistan"""
+        return datetime.now(TIMEZONE)
+        
     def send_startup_notification(self):
         """Send startup notification with app info"""
+        pk_time = self.get_pk_time()
         startup_message = (
             f"🚀 Prayer Times Agent v{APP_VERSION} is now running!\n\n"
             f"📍 Location: {self.city}, {self.country}\n"
             f"📌 Coordinates: {self.latitude}, {self.longitude}\n"
+            f"🕒 Current Time (PK): {pk_time.strftime('%I:%M %p')}\n"
             f"⚙️ Features:\n"
             f"• 🕌 All prayer time notifications\n"
             f"• ⏰ 10-min advance alert for Asr\n"
@@ -60,7 +70,8 @@ class PrayerTimesAgent:
 
     def get_prayer_times(self):
         """Fetch prayer times from API"""
-        url = f"http://api.aladhan.com/v1/timings/{int(time.time())}?latitude={self.latitude}&longitude={self.longitude}&method=2"
+        pk_time = self.get_pk_time()
+        url = f"http://api.aladhan.com/v1/timings/{int(pk_time.timestamp())}?latitude={self.latitude}&longitude={self.longitude}&method=2&timezone=Asia/Karachi"
         response = requests.get(url)
         if response.status_code == 200:
             return response.json()['data']['timings']
@@ -81,13 +92,15 @@ class PrayerTimesAgent:
 
     def get_time_minus_minutes(self, time_str, minutes):
         """Get time minus specified minutes"""
-        prayer_time = parser.parse(f"{datetime.now().strftime('%Y-%m-%d')} {time_str}")
+        pk_time = self.get_pk_time()
+        prayer_time = parser.parse(f"{pk_time.strftime('%Y-%m-%d')} {time_str}").replace(tzinfo=TIMEZONE)
         return (prayer_time - timedelta(minutes=minutes)).strftime("%H:%M")
 
     def format_prayer_message(self, prayer_name, time_str, is_advance=False):
         """Format prayer notification message with beautiful styling"""
         emoji = self.prayer_emojis.get(prayer_name, '🕌')
-        current_date = datetime.now().strftime("%d %B %Y")
+        pk_time = self.get_pk_time()
+        current_date = pk_time.strftime("%d %B %Y")
         
         if is_advance:
             return (
@@ -109,7 +122,8 @@ class PrayerTimesAgent:
     def schedule_prayers(self):
         """Schedule prayer time notifications"""
         prayer_times = self.get_prayer_times()
-        current_date = datetime.now().strftime("%Y-%m-%d")
+        pk_time = self.get_pk_time()
+        current_date = pk_time.strftime("%Y-%m-%d")
         
         # Prayer names mapping
         prayer_names = {
@@ -122,36 +136,36 @@ class PrayerTimesAgent:
 
         # Schedule notifications for each prayer
         for prayer, name in prayer_names.items():
-            prayer_time = parser.parse(f"{current_date} {prayer_times[prayer]}")
+            prayer_time = parser.parse(f"{current_date} {prayer_times[prayer]}").replace(tzinfo=TIMEZONE)
             
             # Schedule regular prayer notification
-            if prayer_time > datetime.now():
+            if prayer_time > pk_time:
                 schedule.every().day.at(prayer_times[prayer]).do(
                     self.send_whatsapp_message,
                     self.format_prayer_message(name, prayer_times[prayer])
                 )
-                print(f"Scheduled {name} prayer notification for {prayer_times[prayer]}")
+                print(f"Scheduled {name} prayer notification for {prayer_times[prayer]} PKT")
                 
                 # Schedule 10-minute advance notification for Asr and Isha
                 if prayer in ['Asr', 'Isha']:
                     advance_time = self.get_time_minus_minutes(prayer_times[prayer], 10)
-                    advance_time_obj = parser.parse(f"{current_date} {advance_time}")
+                    advance_time_obj = parser.parse(f"{current_date} {advance_time}").replace(tzinfo=TIMEZONE)
                     
-                    if advance_time_obj > datetime.now():
+                    if advance_time_obj > pk_time:
                         schedule.every().day.at(advance_time).do(
                             self.send_whatsapp_message,
                             self.format_prayer_message(name, prayer_times[prayer], is_advance=True)
                         )
-                        print(f"Scheduled 10-minute advance notification for {name} prayer at {advance_time}")
+                        print(f"Scheduled 10-minute advance notification for {name} prayer at {advance_time} PKT")
 
     def run(self):
         """Run the prayer times agent"""
-        print("Starting Prayer Times Agent...")
+        print(f"Starting Prayer Times Agent... (Pakistan Time: {self.get_pk_time().strftime('%I:%M %p')})")
         
         # Send startup notification
         self.send_startup_notification()
         
-        # Schedule daily prayer scheduling
+        # Schedule daily prayer scheduling at midnight Pakistan time
         schedule.every().day.at("00:01").do(self.schedule_prayers)
         
         # Initial run
